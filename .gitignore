@@ -30,7 +30,7 @@ venv/
 *.b64
 
 # GCP key files (NEVER push!)
-*.json
+#*.json
 
 # frontend ignore files
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files

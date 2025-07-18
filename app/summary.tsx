@@ -20,6 +20,10 @@ import { BACKEND_URL } from '@env';
 export default function Summary() {
   const [items, setItems] = useState([]);
   const [user, setUser] = useState(null);
+  const [page, setPage] = useState(0); // 0부터 시작
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const limit = 10; // 한 번에 가져올 뉴스 개수
   const auth = getAuth();
   const router = useRouter();
   const colorScheme = useColorScheme();
@@ -44,31 +48,51 @@ export default function Summary() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ 사용자 토큰 기반 데이터 요청
+  // ✅ 사용자 토큰 기반 데이터 요청 (pagination 적용)
+  const fetchData = async (pageToLoad = 0, append = false) => {
+    if (!user || loading || !hasMore) return;
+    setLoading(true);
+
+    try {
+      const token = await user.getIdToken();
+      const skip = pageToLoad * limit;
+      const res = await axios.get(
+        `${BACKEND_URL}/summaries/paginated?skip=${skip}&limit=${limit}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      const newItems = res.data || [];
+      setItems(prev => append ? [...prev, ...newItems] : newItems);
+      setHasMore(newItems.length === limit); // 받아온 개수가 limit보다 작으면 마지막 페이지
+      setPage(pageToLoad);
+    } catch (error) {
+      console.error('❌ 요약 데이터 요청 실패:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 최초 1회, user 변경 시 첫 페이지 로드
   useEffect(() => {
-    const fetchData = async () => {
-      if (!user) return;
-
-      try {
-        const token = await user.getIdToken();
-
-        const res = await axios.get(
-          `${BACKEND_URL}/summaries`, // ✅ 백틱 사용!
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        setItems(res.data);
-      } catch (error) {
-        console.error('❌ 요약 데이터 요청 실패:', error);
-      }
-    };
-
-    fetchData();
+    if (user) {
+      setItems([]);
+      setPage(0);
+      setHasMore(true);
+      fetchData(0, false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // ✅ URL 열기
+  // FlatList 끝에 도달 시 다음 페이지 로드
+  const handleLoadMore = () => {
+    if (hasMore && !loading) {
+      fetchData(page + 1, true);
+    }
+  };
+
+ // ✅ URL 열기
   const handleOpenURL = async (url: string) => {
     if (await Linking.canOpenURL(url)) {
       Linking.openURL(url);
@@ -84,7 +108,7 @@ export default function Summary() {
           gestureEnabled: false,       // 스와이프 제스처도 방지
         }}
       />
-      <View style={[styles.container, { backgroundColor: isDark ? '#000' : '#fff' }]}>
+     <View style={[styles.container, { backgroundColor: isDark ? '#000' : '#fff' }]}>
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
@@ -94,7 +118,13 @@ export default function Summary() {
 
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                 <Text style={{ color: isDark ? '#999' : '#666', fontSize: 12 }}>
-                  🕒 {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                  🕒 {item.created_at
+                    ? new Date(
+                        item.created_at.endsWith('Z')
+                          ? item.created_at
+                          : item.created_at.replace(' ', 'T') + 'Z'
+                      ).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+                    : ''}
                 </Text>
 
                 <TouchableOpacity onPress={() => handleOpenURL(item.url)}>
@@ -111,6 +141,15 @@ export default function Summary() {
             <Text style={{ textAlign: 'center', color: isDark ? '#999' : '#666', marginTop: 40 }}>
               요약된 뉴스가 없습니다.
             </Text>
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loading ? (
+              <Text style={{ textAlign: 'center', color: isDark ? '#999' : '#666', marginVertical: 10 }}>
+                불러오는 중...
+              </Text>
+            ) : null
           }
         />
 

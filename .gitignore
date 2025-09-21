@@ -70,3 +70,7 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Claude
+.claude/
+.claude-story
